@@ -1,10 +1,15 @@
 // smcpoc: New implementation file; see comment in header.
 #include "CvGameCoreDLL.h"
 #include "SelfMod.h"
+
+#include "minhook/MinHook.h"
+#pragma comment(lib, "minhook/MinHook.x86.lib")
+
 // This should arguably go in CvGameCoreDLL.h instead ...
 #include <algorithm>
 // ... and this in FAssert.h, but let's try to keep our changes local. */
 #define FErrorMsg(msg) FAssertMsg(false, msg)
+
 
 Civ4BeyondSwordMods smc::BtS_EXE;
 
@@ -196,7 +201,7 @@ public:
 				0x00, 0x89, 0x7C, 0x24, 0x44, 0x89, 0x7C, 0x24, 0x48, 0x89, 0x7C, 0x24,
 				0x4C, 0x8D, 0x54, 0x24, 0x40, 0x52, 0xC6, 0x84, 0x24, 0x84, 0x00, 0x00,
 				0x00, 0x01, 0x8B, 0x41, 0x04, 0x8D, 0x54, 0x24, 0x54, 0x52, 0x50, 0x8B,
-				0x41, 0x08, 0x50 
+				0x41, 0x08, 0x50
 			};
 			// Where we expect the needle at iAddressOffset=0
 			uint const uiStartAddress = 0x00464930;
@@ -299,3 +304,66 @@ void Civ4BeyondSwordMods::patchPlotIndicatorSize()
 	PlotIndicatorSizePatch patch(iScreenHeight);
 	patch.apply();
 }
+
+#ifdef SELF_MOD_DIPLO_MENU_H
+void Civ4BeyondSwordMods::patchDiploWin()
+{
+	int const iScreenHeight = GC.getGame().getScreenHeight();
+	int const iScreenWidth = GC.getGame().getScreenWidth();
+	if (iScreenHeight <= 0)
+	{
+		FErrorMsg("Caller should've ensured that screen dims are set");
+		return;
+	}
+
+	float scaleFactor = std::min(std::max(1.0f, ((float) iScreenHeight)/768.f), 3.0f);
+	int extraWidth = std::min(std::max(0, (iScreenWidth - 1024)/3), 200);
+	scaleFactor = std::sqrt(scaleFactor); // >= 1.0
+	diploWinSizes.update(scaleFactor, extraWidth);
+
+	// Add hooks for diplo window (triggered on first call only)
+	if( !isDiploWinPatched()){
+		hookDiploWin();
+	}
+
+	m_bDiploWinSizePatched = true;
+}
+
+void Civ4BeyondSwordMods::hookDiploWin()
+{
+	// TODO
+	// TODO: Minhook stuff here
+		MH_Initialize();
+
+		#define HOOK(H) MH_CreateHook(\
+				(LPVOID)diploHooks.H.target,\
+				diploHooks.H.hook,\
+				reinterpret_cast<void**>((LPVOID)&diploHooks.H.trampolin))
+
+    HOOK(Replace_DipLeftTop);
+    HOOK(Replace_DipLeftBottom);
+    HOOK(Replace_DipRightTop);
+    HOOK(Replace_DipRightBottom);
+    HOOK(Replace_DipMidHeadline_MP);
+    HOOK(Replace_DipMidHeadline_SP);
+    HOOK(Replace_DipMidCenter_MP);
+    HOOK(Replace_DipMidCenter_SP);
+    HOOK(Replace_DipLeaderhead_RestoreCenter);
+    HOOK(Replace_DipMidBottom_MP);
+    HOOK(Replace_DipMidBottom_SP);
+    HOOK(Replace_addLeaderheadGFC);
+
+		/*
+		 //This doesn't scaling the font size but adapts position.
+		 //(From more general rescaling mod.)
+    HOOK(Replace_setText);
+    HOOK(Replace_setLabel);
+		*/
+
+		MH_EnableHook(MH_ALL_HOOKS);
+}
+
+//#include "SelfMod_DiploMenu.cpp"
+#endif
+
+
