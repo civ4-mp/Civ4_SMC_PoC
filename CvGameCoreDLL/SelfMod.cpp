@@ -2,8 +2,16 @@
 #include "CvGameCoreDLL.h"
 #include "SelfMod.h"
 
+#ifdef WITHOUT_EXTERNAL_DLLS
+#define	MH_DisableHook(_)
+#define MH_Uninitialize()
+#define	MH_Initialize()
+#define	MH_CreateHook(A,B,C)
+#define	MH_EnableHook(_) 
+#else
 #include "minhook/MinHook.h"
 #pragma comment(lib, "minhook/MinHook.x86.lib")
+#endif
 
 // This should arguably go in CvGameCoreDLL.h instead ...
 #include <algorithm>

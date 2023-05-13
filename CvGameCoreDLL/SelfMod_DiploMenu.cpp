@@ -1,8 +1,22 @@
+
+#define _MBCS
+#undef _UNICODE
+#include <cstdlib> // needed for update_path_env()
+#include <stdlib.h> // needed for update_path_env()
+
 #include "CvGameCoreDLL.h"
 #include "SelfMod.h"
 
+#ifdef WITHOUT_EXTERNAL_DLLS
+#define	MH_DisableHook(_)
+#define MH_Uninitialize()
+#define	MH_Initialize()
+#define	MH_CreateHook(A,B,C)
+#define	MH_EnableHook(_) 
+#else
 #include "minhook/MinHook.h"
 #pragma comment(lib, "minhook/MinHook.x86.lib")
+#endif
 
 /* ATTENTION: Manipulating stuff by assembly code and
  * then returning the original function by trampolin just
@@ -470,13 +484,13 @@ void FUNC_NAKED Cv_setLabel(){
 //
 // for logging
 //
-static const int kBufSize = 2048;
+/*static const int kBufSize = 2048;
 void logMsg(char* format, ... )
 {
 	static char buf[kBufSize];
 	_vsnprintf( buf, kBufSize-4, format, (char*)(&format+1) );
 	gDLL->logMsg("hooking.log", buf);
-}
+}*/
 
 DiploHooks::DiploHooks():
 	Replace_DipLeftTop((VoidFunc)0x0057F4E0, &Cv_DipLeftTop),
@@ -498,7 +512,6 @@ DiploHooks::DiploHooks():
 
 
 DiploHooks::~DiploHooks() {
-	//logMsg("Disable hooks\n");
 	MH_DisableHook(MH_ALL_HOOKS);
 	MH_Uninitialize();
 }
@@ -582,3 +595,78 @@ void DiploWinSizes::scaleAroundMidpoint(
 	dest.w = int(s * source.w);
 	dest.h = int(t * source.h);
 }
+
+
+// PoC Allow loading of DLLs from Mod-Folder (Security hole)
+bool update_path_env() {
+#if 0
+  // Get absolute path of subfolder
+  DWORD len = GetCurrentDirectory(0, NULL); // Here, len does include final \0
+  LPTSTR _directory = (LPTSTR) malloc(len * sizeof(TCHAR));
+  len = GetCurrentDirectory(len, _directory); // Here, len does not include final \0
+  if (len == 0 ){
+    std::cout << "Can't fetch current directory" << std::endl;
+    free(_directory);
+    return false;
+  }
+  std::string directory(_directory);
+  directory.append("\\BTS_Wrapper_Libs");
+  free(_directory);
+
+  // Get current value of PATH variable
+  const std::size_t ENV_BUF_SIZE = 1024; // Enough for your PATH?
+  char buf[ENV_BUF_SIZE];
+  std::size_t bufsize = ENV_BUF_SIZE;
+  int e = getenv_s(&bufsize,buf,bufsize,"PATH");  
+  if (e) {
+    std::cout << "`getenv_s` failed, returned " << e << '\n';
+    return false;
+  }
+
+  // Update PATH variable
+  std::string env_path = buf;
+  //std::cout << "In main process, `PATH`=" << env_path << std::endl;
+  env_path += ";";
+  env_path += directory;
+  e = _putenv_s("PATH",env_path.c_str());
+  if (e) {
+    std::cout << "`_putenv_s` failed, returned " << e << std::endl;
+    return false;
+  }
+#else
+  // Get current value of PATH variable
+  const std::size_t ENV_BUF_SIZE = 1024; // Enough for your PATH?
+  //char buf2[ENV_BUF_SIZE];
+  std::size_t bufsize = ENV_BUF_SIZE;
+	int e=0;
+  //e = getenv_s(&bufsize,buf2,bufsize,"PATH");  
+	const char *libvar = getenv( "LIB" );
+
+  if (e) {
+    //std::cout << "`getenv_s` failed, returned " << e << '\n';
+    return false;
+  }
+#endif
+  return true;
+}
+
+
+/*extern "C" BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpvReserved)
+{
+  switch (dwReason)
+  {
+    case DLL_PROCESS_ATTACH:
+      {
+      }
+      break;
+    case DLL_PROCESS_DETACH:
+      break;
+    case DLL_THREAD_ATTACH:
+      break;
+    case DLL_THREAD_DETACH:
+      break;
+  }
+  return true;
+
+}
+*/

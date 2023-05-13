@@ -14,6 +14,7 @@
 #pragma warning( disable: 4530 )	// C++ exception handler used, but unwind semantics are not enabled
 
 #define WIN32_LEAN_AND_MEAN
+#define _WIN32_WINNT 0x0501
 #include <windows.h>
 #include <MMSystem.h>
 #if defined _DEBUG && !defined USE_MEMMANAGER
@@ -27,6 +28,9 @@
 #include <assert.h>
 #include <map>
 #include <hash_map>
+
+// Logging without dependencies to gDLL for early (and late) logging.
+void logMsg(char* format, ... );
 
 #define DllExport   __declspec( dllexport ) 
 

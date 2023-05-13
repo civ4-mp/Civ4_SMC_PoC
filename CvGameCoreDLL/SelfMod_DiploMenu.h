@@ -177,7 +177,7 @@ class DiploWinSizes
     __asm xor   ah, 04h     C("Round toward + mode, 10b") \
     __asm push  eax         C("Push exa on stack for fldcw") \
     __asm fldcw [esp]       C("Load new control word") \
-    IFMUL(OFFSET+8, FACTOR) C("+8 because stack is grown by 2 words") \
+    IFMUL(OFFSET+DEBUG_OFFSET+8, FACTOR) C("+8 because stack is grown by 2 words") \
     __asm pop eax           C("Discard changed control word") \
     __asm fldcw [esp]       C("Load previous control word") \
     __asm pop eax           C("Discard previous control word") \
