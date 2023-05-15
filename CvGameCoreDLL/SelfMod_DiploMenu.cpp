@@ -24,30 +24,87 @@
  0012FC00 dd       102h
  0012FC04 dd       1F9h
  *
+ *
+ * Exe: 0x0057F4E0
  */
-void Cv_DipLeftTop(){
+void FUNC_NAKED Cv_DipLeftTop(){
 	// Use pre-evaluated positions on stack in assembler code...
 	__asm{
 		push ecx
-		IIADD(0x3c, eax, ecx, smc::BtS_EXE.diploWinSizes.leftTop.x)
-		IIADD(0x40, eax, ecx, smc::BtS_EXE.diploWinSizes.leftTop.y)
+		IIADD(0x38 + 4, eax, ecx, smc::BtS_EXE.diploWinSizes.leftTop.x)
+		IIADD(0x3c + 4, eax, ecx, smc::BtS_EXE.diploWinSizes.leftTop.y)
 		pop ecx
 	}
-	//COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.leftTop.x);
-	//COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.leftTop.y);
-
-	COPY(0x40, eax, smc::BtS_EXE.diploWinSizes.leftTop.w);
-	COPY(0x44, eax, smc::BtS_EXE.diploWinSizes.leftTop.h);
+	COPY_ON_STACK(0x40, eax, smc::BtS_EXE.diploWinSizes.leftTop.w);
+	COPY_ON_STACK(0x44, eax, smc::BtS_EXE.diploWinSizes.leftTop.h);
 
 	// Prepare leaderhead scaling in open diplomenu
+#if 0
 	__asm{
 		fld  DWORD PTR smc::BtS_EXE.diploWinSizes.factorMain
 		fstp DWORD PTR smc::BtS_EXE.diploWinSizes.factorLeaderhead
 	}
+#else
+  __asm{
+    mov eax, [smc::BtS_EXE.diploWinSizes.factorMain]
+    mov [smc::BtS_EXE.diploWinSizes.factorLeaderhead], eax
+  }
+#endif
 
 	// Continue with original function
-	smc::BtS_EXE.diploHooks.Replace_DipLeftTop.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipLeftTop.trampolin(); // Problematic in DEBUG-Mode.
+  // Undo ESP-shift by debug-variables on stack, first force use of jmp, but not 'call'.
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipLeftTop.trampolin);
 }
+
+/* As reference here are the assembler lines of Cv_DipRightTop for different compiling options.
+ * It shows the different prelude code which influcences the ESP register value.
+ * Note that the lines after 'jmp' will not be reached!
+ *
+ * Usage of FUNC_NAKED prevents this branching and everthing is like case (3).
+ *
+ * 1) Debugbuild
+   CvGameCoreDLL.Cv_DipLeftTop - 55                      - push ebp
+   CvGameCoreDLL.Cv_DipLeftTop+1- 8B EC                  - mov ebp,esp
+   CvGameCoreDLL.Cv_DipLeftTop+3- 56                     - push esi
+   CvGameCoreDLL.Cv_DipLeftTop+4- 51                     - push ecx
+   CvGameCoreDLL.Cv_DipLeftTop+5- 8B 44 24 44            - mov eax,[esp+44]
+   CvGameCoreDLL.Cv_DipLeftTop+9- 8B 0D EC266F04         - mov ecx,[CvGameCoreDLL.smc::BtS_EXE+BC]
+   CvGameCoreDLL.Cv_DipLeftTop+F- 03 C1                  - add eax,ecx
+   CvGameCoreDLL.Cv_DipLeftTop+11- 89 44 24 44           - mov [esp+44],eax
+   […]
+   CvGameCoreDLL.Cv_DipLeftTop+42- 5E                    - pop esi
+   CvGameCoreDLL.Cv_DipLeftTop+43- 5D                    - pop ebp
+   CvGameCoreDLL.Cv_DipLeftTop+44- FF 25 3C266F04        - jmp dword ptr [CvGameCoreDLL.smc::BtS_EXE+C]
+   CvGameCoreDLL.Cv_DipLeftTop+4A- 5E                    - pop esi
+   CvGameCoreDLL.Cv_DipLeftTop+4B- 3B EC                 - cmp ebp,esp
+   CvGameCoreDLL.Cv_DipLeftTop+4D- E8 4A600000           - call CvGameCoreDLL._RTC_CheckEsp
+   CvGameCoreDLL.Cv_DipLeftTop+52- 5D                    - pop ebp
+   CvGameCoreDLL.Cv_DipLeftTop+53- C3                    - ret 
+ * 
+ * 2) Releasebuild with /Oy- Option => push/pop of EBP (?? NO, this is also true with /Oy... ?!)
+   CvGameCoreDLL.CyUnit::CyUnit+109F0 - 55                    - push ebp
+   CvGameCoreDLL.CyUnit::CyUnit+109F1 - 8B EC                 - mov ebp,esp
+   CvGameCoreDLL.CyUnit::CyUnit+109F3 - 51                    - push ecx
+   CvGameCoreDLL.CyUnit::CyUnit+109F4 - 8B 44 24 3C           - mov eax,[esp+40]
+   CvGameCoreDLL.CyUnit::CyUnit+109F8 - 8B 0D A4D3F403        - mov ecx,[CvGameCoreDLL.dll+45D3A4]
+   CvGameCoreDLL.CyUnit::CyUnit+109FE - 03 C1                 - add eax,ecx
+   CvGameCoreDLL.CyUnit::CyUnit+10A00 - 89 44 24 3C           - mov [esp+40],eax
+   […]
+   CvGameCoreDLL.CyUnit::CyUnit+10A31 - FF 25 F4D2F403        - jmp dword ptr [CvGameCoreDLL.dll+45D2F4]
+   CvGameCoreDLL.CyUnit::CyUnit+10A37 - 5D                    - pop ebp
+   CvGameCoreDLL.CyUnit::CyUnit+10A38 - C3                    - ret 
+ *
+ * 3) Release build with Civ4 standard options in Makefile
+   CvGameCoreDLL.CyPlot::CyPlot+107F0 - 51                    - push ecx
+   CvGameCoreDLL.CyPlot::CyPlot+107F1 - 8B 44 24 3C           - mov eax,[esp+3C]
+   CvGameCoreDLL.CyPlot::CyPlot+107F5 - 8B 0D A4D3E403        - mov ecx,[CvGameCoreDLL.dll+45D3A4]
+   CvGameCoreDLL.CyPlot::CyPlot+107FB - 03 C1                 - add eax,ecx
+   CvGameCoreDLL.CyPlot::CyPlot+107FD - 89 44 24 3C           - mov [esp+3C],eax
+   […]
+   CvGameCoreDLL.CyPlot::CyPlot+10830 - FF 25 F4D2E403        - jmp dword ptr [CvGameCoreDLL.dll+45D2F4]
+ */
+
 
 /* DiploMenu: Left bottom element
  *
@@ -60,7 +117,7 @@ void Cv_DipLeftTop(){
  0012FC04 dd       0E8h ; Þ
  *
  */
-void Cv_DipLeftBottom(){
+void FUNC_NAKED Cv_DipLeftBottom(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -68,12 +125,11 @@ void Cv_DipLeftBottom(){
 			IIADD(0x40, eax, ecx, smc::BtS_EXE.diploWinSizes.leftBottom.y)
 			pop ecx
 	}
-	//COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.leftBottom.x);
-	//COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.leftBottom.y);
-	COPY(0x40, eax, smc::BtS_EXE.diploWinSizes.leftBottom.w);
-	COPY(0x44, eax, smc::BtS_EXE.diploWinSizes.leftBottom.h);
+	COPY_ON_STACK(0x40, eax, smc::BtS_EXE.diploWinSizes.leftBottom.w);
+	COPY_ON_STACK(0x44, eax, smc::BtS_EXE.diploWinSizes.leftBottom.h);
 
-	smc::BtS_EXE.diploHooks.Replace_DipLeftBottom.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipLeftBottom.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipLeftBottom.trampolin);
 }
 
 /* DiploMenu: Right top element
@@ -86,7 +142,7 @@ void Cv_DipLeftBottom(){
  0012FC00 dd       102h
  0012FC04 dd       1F9h ; ¨
  */
-void Cv_DipRightTop(){
+void FUNC_NAKED Cv_DipRightTop(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -94,12 +150,11 @@ void Cv_DipRightTop(){
 			IIADD(0x40, eax, ecx, smc::BtS_EXE.diploWinSizes.rightTop.y)
 			pop ecx
 	}
-	//COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.rightTop.x);
-	//COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.rightTop.y);
-	COPY(0x40, eax, smc::BtS_EXE.diploWinSizes.rightTop.w);
-	COPY(0x44, eax, smc::BtS_EXE.diploWinSizes.rightTop.h);
+	COPY_ON_STACK(0x40, eax, smc::BtS_EXE.diploWinSizes.rightTop.w);
+	COPY_ON_STACK(0x44, eax, smc::BtS_EXE.diploWinSizes.rightTop.h);
 
-	smc::BtS_EXE.diploHooks.Replace_DipRightTop.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipRightTop.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipRightTop.trampolin);
 }
 
 /* DiploMenu: Right bottom element
@@ -112,7 +167,7 @@ void Cv_DipRightTop(){
  0012FC00 dd       102h
  0012FC04 dd       0E8h ; Þ
  */
-void Cv_DipRightBottom(){
+void FUNC_NAKED Cv_DipRightBottom(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -120,12 +175,11 @@ void Cv_DipRightBottom(){
 			IIADD(0x40, eax, ecx, smc::BtS_EXE.diploWinSizes.rightBottom.y)
 			pop ecx
 	}
-	//COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.rightBottom.x);
-	//COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.rightBottom.y);
-	COPY(0x40, eax, smc::BtS_EXE.diploWinSizes.rightBottom.w);
-	COPY(0x44, eax, smc::BtS_EXE.diploWinSizes.rightBottom.h);
+	COPY_ON_STACK(0x40, eax, smc::BtS_EXE.diploWinSizes.rightBottom.w);
+	COPY_ON_STACK(0x44, eax, smc::BtS_EXE.diploWinSizes.rightBottom.h);
 
-	smc::BtS_EXE.diploHooks.Replace_DipRightBottom.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipRightBottom.trampolin();
+  TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipRightBottom.trampolin);
 }
 
 /* DiploMenu: Headline in MP branch
@@ -134,7 +188,7 @@ void Cv_DipRightBottom(){
  * Data: x,y,w,h from esp+0x30 to esp+0x3c
  * Default values: 0x2CF, 0x0AE, 0x1E1, 0x2B
  */
-void Cv_DipMidHeadline_MP(){
+void FUNC_NAKED Cv_DipMidHeadline_MP(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -142,15 +196,14 @@ void Cv_DipMidHeadline_MP(){
 			IIADD(0x38, eax, ecx, smc::BtS_EXE.diploWinSizes.midHeadline.y)
 			pop ecx
 	}
-	//COPY(0x30, eax, smc::BtS_EXE.diploWinSizes.midHeadline.x);
-	//COPY(0x34, eax, smc::BtS_EXE.diploWinSizes.midHeadline.y);
-	COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.midHeadline.w);
-	COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.midHeadline.h);
+	COPY_ON_STACK(0x38, eax, smc::BtS_EXE.diploWinSizes.midHeadline.w);
+	COPY_ON_STACK(0x3c, eax, smc::BtS_EXE.diploWinSizes.midHeadline.h);
 
-	smc::BtS_EXE.diploHooks.Replace_DipMidHeadline_MP.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipMidHeadline_MP.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipMidHeadline_MP.trampolin);
 }
 
-void Cv_DipMidHeadline_SP(){
+void FUNC_NAKED Cv_DipMidHeadline_SP(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -158,11 +211,11 @@ void Cv_DipMidHeadline_SP(){
 			IIADD(0x38, eax, ecx, smc::BtS_EXE.diploWinSizes.midHeadline.y)
 			pop ecx
 	}
-	//COPY(0x30, eax, smc::BtS_EXE.diploWinSizes.midHeadline.x);
-	//COPY(0x34, eax, smc::BtS_EXE.diploWinSizes.midHeadline.y);
-	COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.midHeadline.w);
-	COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.midHeadline.h);
-	smc::BtS_EXE.diploHooks.Replace_DipMidHeadline_SP.trampolin();
+	COPY_ON_STACK(0x38, eax, smc::BtS_EXE.diploWinSizes.midHeadline.w);
+	COPY_ON_STACK(0x3c, eax, smc::BtS_EXE.diploWinSizes.midHeadline.h);
+
+	//smc::BtS_EXE.diploHooks.Replace_DipMidHeadline_SP.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipMidHeadline_SP.trampolin);
 }
 
 /* DiploMenu: Center in MP branch
@@ -171,7 +224,7 @@ void Cv_DipMidHeadline_SP(){
  * Data: x,y,w,h from esp+0x30 to esp+0x3c
  * Default values: 0x2CF, 0x0D9, 0x1E1, 0x1CE
  */
-void Cv_DipMidCenter_MP(){
+void FUNC_NAKED Cv_DipMidCenter_MP(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -179,12 +232,11 @@ void Cv_DipMidCenter_MP(){
 			IIADD(0x38, eax, ecx, smc::BtS_EXE.diploWinSizes.midCenter.y)
 			pop ecx
 	}
-	//COPY(0x30, eax, smc::BtS_EXE.diploWinSizes.midCenter.x);
-	//COPY(0x34, eax, smc::BtS_EXE.diploWinSizes.midCenter.y);
-	COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.midCenter.w);
-	COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.midCenter.h);
+	COPY_ON_STACK(0x38, eax, smc::BtS_EXE.diploWinSizes.midCenter.w);
+	COPY_ON_STACK(0x3c, eax, smc::BtS_EXE.diploWinSizes.midCenter.h);
 
-	smc::BtS_EXE.diploHooks.Replace_DipMidCenter_MP.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipMidCenter_MP.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipMidCenter_MP.trampolin);
 }
 
 /* DiploMenu: Leaderhead a.k.a. center in SP branch
@@ -203,15 +255,11 @@ void Cv_DipMidCenter_MP(){
  0012FC9C dd       1CEh ; +
  *
  */
-void Cv_DipMidCenter_SP(){
+void FUNC_NAKED Cv_DipMidCenter_SP(){
 	__asm{
-		//push ecx
 			IIADD(0x34, edx, eax, smc::BtS_EXE.diploWinSizes.midCenterSP.x)
 			IIADD(0x38, edx, eax, smc::BtS_EXE.diploWinSizes.midCenterSP.y)
-			//pop ecx
 	}
-	//COPY(0x34, edx, smc::BtS_EXE.diploWinSizes.midCenterSP.x);
-	//COPY(0x38, edx, smc::BtS_EXE.diploWinSizes.midCenterSP.y);
 	// Decoration handle
 #if 0
 	__asm{
@@ -219,11 +267,12 @@ void Cv_DipMidCenter_SP(){
 		IFMUL(0x40, smc::BtS_EXE.diploWinSizes.factorMain)
 	}
 #else
-	COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.midCenterSP.w);
-	COPY(0x40, eax, smc::BtS_EXE.diploWinSizes.midCenterSP.h);
+	COPY_ON_STACK(0x3c, eax, smc::BtS_EXE.diploWinSizes.midCenterSP.w);
+	COPY_ON_STACK(0x40, eax, smc::BtS_EXE.diploWinSizes.midCenterSP.h);
 #endif
 
-	smc::BtS_EXE.diploHooks.Replace_DipMidCenter_SP.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipMidCenter_SP.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipMidCenter_SP.trampolin);
 }
 
 /*
@@ -239,17 +288,18 @@ void Cv_DipMidCenter_SP(){
 .text:00552213                 push    40h
  * We change the 0x40.
  */
-void Cv_DipLeaderhead_RestoreCenter(){
+void FUNC_NAKED Cv_DipLeaderhead_RestoreCenter(){
 #if 0
 	//(0x40,5) *= scale
 	IFMUL(0x00, smc::BtS_EXE.diploWinSizes.factorLeaderhead)
 	IFMUL(0x04, smc::BtS_EXE.diploWinSizes.factorLeaderhead)
 #else
-	//COPY(0x00, eax, smc::BtS_EXE.diploWinSizes.midLeaderheadOffset.x);
-	//COPY(0x04, eax, smc::BtS_EXE.diploWinSizes.midLeaderheadOffset.y);
+	COPY_ON_STACK(0x00, eax, smc::BtS_EXE.diploWinSizes.midLeaderheadOffset.x);
+	COPY_ON_STACK(0x04, eax, smc::BtS_EXE.diploWinSizes.midLeaderheadOffset.y);
 #endif
 
-	smc::BtS_EXE.diploHooks.Replace_DipLeaderhead_RestoreCenter.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipLeaderhead_RestoreCenter.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipLeaderhead_RestoreCenter.trampolin);
 }
 
 
@@ -259,7 +309,7 @@ void Cv_DipLeaderhead_RestoreCenter(){
  * Data: x,y,w,h from esp+0x30 to esp+0x3c
  * Default values: 0x2CF, 0x2A7, 0x1E1, 0xE8
  */
-void Cv_DipMidBottom_MP(){
+void FUNC_NAKED Cv_DipMidBottom_MP(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -267,12 +317,11 @@ void Cv_DipMidBottom_MP(){
 			IIADD(0x38, eax, ecx, smc::BtS_EXE.diploWinSizes.midBottom.y)
 			pop ecx
 	}
-	//COPY(0x30, eax, smc::BtS_EXE.diploWinSizes.midBottom.x);
-	//COPY(0x34, eax, smc::BtS_EXE.diploWinSizes.midBottom.y);
-	COPY(0x38, eax, smc::BtS_EXE.diploWinSizes.midBottom.w);
-	COPY(0x3c, eax, smc::BtS_EXE.diploWinSizes.midBottom.h);
+	COPY_ON_STACK(0x38, eax, smc::BtS_EXE.diploWinSizes.midBottom.w);
+	COPY_ON_STACK(0x3c, eax, smc::BtS_EXE.diploWinSizes.midBottom.h);
 
-	smc::BtS_EXE.diploHooks.Replace_DipMidBottom_MP.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_DipMidBottom_MP.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipMidBottom_MP.trampolin);
 }
 
 /* DiploMenu: Bottom in SP variant
@@ -283,7 +332,7 @@ void Cv_DipMidBottom_MP(){
  *
  * Note: Different offset from esp as mp variant!
  */
-void Cv_DipMidBottom_SP(){
+void FUNC_NAKED Cv_DipMidBottom_SP(){
 	// Use pre-evaluated values...
 	__asm{
 		push ecx
@@ -291,11 +340,11 @@ void Cv_DipMidBottom_SP(){
 			IIADD(0x4c, eax, ecx, smc::BtS_EXE.diploWinSizes.midBottom.y)
 			pop ecx
 	}
-	//COPY(0x30, eax, smc::BtS_EXE.diploWinSizes.midBottom.x);
-	//COPY(0x34, eax, smc::BtS_EXE.diploWinSizes.midBottom.y);
-	COPY(0x4c, eax, smc::BtS_EXE.diploWinSizes.midBottom.w);
-	COPY(0x50, eax, smc::BtS_EXE.diploWinSizes.midBottom.h);
-	smc::BtS_EXE.diploHooks.Replace_DipMidBottom_SP.trampolin();
+	COPY_ON_STACK(0x4c, eax, smc::BtS_EXE.diploWinSizes.midBottom.w);
+	COPY_ON_STACK(0x50, eax, smc::BtS_EXE.diploWinSizes.midBottom.h);
+
+	//smc::BtS_EXE.diploHooks.Replace_DipMidBottom_SP.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_DipMidBottom_SP.trampolin);
 }
 
 /* PythonApi:
@@ -313,10 +362,10 @@ void Cv_DipMidBottom_SP(){
  *
  * Todo: Control position (iX, iY)
  */
-void Cv_addLeaderheadGFC(){
+void FUNC_NAKED Cv_addLeaderheadGFC(){
 #if 0
 	// Use pre-evaluated values...
-	COPY(0x08, eax, smc::BtS_EXE.diploWinSizes.midLeaderheadSize.h);
+	COPY_ON_STACK(0x08, eax, smc::BtS_EXE.diploWinSizes.midLeaderheadSize.h);
 	__asm{
 		mov ecx, smc::BtS_EXE.diploWinSizes.midLeaderheadSize.w
 	}
@@ -331,7 +380,8 @@ void Cv_addLeaderheadGFC(){
 		fstp DWORD PTR smc::BtS_EXE.diploWinSizes.factorLeaderhead
 	}
 
-	smc::BtS_EXE.diploHooks.Replace_addLeaderheadGFC.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_addLeaderheadGFC.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_addLeaderheadGFC.trampolin);
 }
 
 // More general hooks (Called from PythonApi) */
@@ -386,11 +436,12 @@ calls this one. Is this CvGInterfaceScreen::setText(?) ?!
  * Call point: 0x00570E70
  * Critical offsets: 30, 34
 */
-void Cv_setText(){
+void FUNC_NAKED Cv_setText(){
 	FFMUL(0x30, smc::BtS_EXE.diploWinSizes.factorMain); // x
 	FFMUL(0x34, smc::BtS_EXE.diploWinSizes.factorMain); // y
 
-	smc::BtS_EXE.diploHooks.Replace_setText.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_setText.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_setText.trampolin);
 }
 
 /* PythonApi:
@@ -407,11 +458,12 @@ void Cv_setText(){
  * Call point: 0x004E7170
  * Critical offsets: 2C, 30
  */
-void Cv_setLabel(){
+void FUNC_NAKED Cv_setLabel(){
 	FFMUL(0x30, smc::BtS_EXE.diploWinSizes.factorMain); // x
 	FFMUL(0x34, smc::BtS_EXE.diploWinSizes.factorMain); // y
 
-	smc::BtS_EXE.diploHooks.Replace_setLabel.trampolin();
+	//smc::BtS_EXE.diploHooks.Replace_setLabel.trampolin();
+	TRAMPOLINE(smc::BtS_EXE.diploHooks.Replace_setLabel.trampolin);
 }
 /* ================= END HOOKS ================== */
 
@@ -446,7 +498,7 @@ DiploHooks::DiploHooks():
 
 
 DiploHooks::~DiploHooks() {
-	logMsg("Disable hooks\n");
+	//logMsg("Disable hooks\n");
 	MH_DisableHook(MH_ALL_HOOKS);
 	MH_Uninitialize();
 }

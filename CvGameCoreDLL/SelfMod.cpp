@@ -348,7 +348,7 @@ void Civ4BeyondSwordMods::hookDiploWin()
     HOOK(Replace_DipMidHeadline_SP);
     HOOK(Replace_DipMidCenter_MP);
     HOOK(Replace_DipMidCenter_SP);
-    HOOK(Replace_DipLeaderhead_RestoreCenter);
+    //HOOK(Replace_DipLeaderhead_RestoreCenter); // Not needed for 'slim' MidCenter.
     HOOK(Replace_DipMidBottom_MP);
     HOOK(Replace_DipMidBottom_SP);
     HOOK(Replace_addLeaderheadGFC);

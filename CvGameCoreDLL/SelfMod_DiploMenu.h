@@ -95,20 +95,57 @@ class DiploWinSizes
 
 #define C(comment) // Well, commenting in macros sucks...
 
+// Strip overhead which disturbes ESP register, etc.
+#define FUNC_NAKED __declspec(naked)
+
+#ifndef FUNC_NAKED
+// Old approach which handles function overhead manually. (Just as reference)
+/* With debug information, each function begins with the push of two
+ * variables on the stack:
+ * push        ebp  
+ * mov         ebp,esp  
+ * push        esi
+ *
+ * We need to respect this offset during the manipulation of stack variables.
+ */
+#ifdef _DEBUG
+#define DEBUG_OFFSET 8
+#define DEBUG_UNDO \
+  __asm{ \
+    __asm pop esi \
+    __asm pop ebp \
+  }
+#else
+#ifdef WITH_FRAME_POINTER // /Oy- compiler flag?!
+#define DEBUG_OFFSET 4
+#define DEBUG_UNDO \
+  __asm{ \
+    __asm pop ebp \
+  }
+#else
+#define DEBUG_OFFSET 0
+#define DEBUG_UNDO 
+#endif
+#endif
+#else
+#define DEBUG_OFFSET 0
+#define DEBUG_UNDO 
+#endif
+
 /* Multiply float by float. */
 #define FFMUL(OFFSET, FACTOR) \
     __asm{ \
         __asm 		fld [FACTOR] \
-        __asm 		fmul DWORD PTR [esp+OFFSET] \
-        __asm		fstp DWORD PTR [esp+OFFSET] \
+        __asm 		fmul DWORD PTR [esp+(OFFSET+DEBUG_OFFSET)] \
+        __asm		fstp DWORD PTR [esp+(OFFSET+DEBUG_OFFSET)] \
     }
 
 /* Multiply int with float scaling factor. */
 #define IFMUL(OFFSET, FACTOR) \
     __asm{ \
         __asm 			fld [FACTOR] \
-        __asm 		fimul DWORD PTR [esp+OFFSET] \
-        __asm 			fistp DWORD PTR [esp+OFFSET] \
+        __asm 		fimul DWORD PTR [esp+(OFFSET+DEBUG_OFFSET)] \
+        __asm 			fistp DWORD PTR [esp+(OFFSET+DEBUG_OFFSET)] \
     }
 
 /* Multiplication of int with float and rounding up towards next integer.
@@ -158,27 +195,27 @@ class DiploWinSizes
 #define FFADD(OFFSET, SHIFTVAR) \
     __asm{ \
         __asm 			fld [SHIFTVAR] \
-        __asm 			fadd DWORD PTR [esp+OFFSET] \
-        __asm 			fstp DWORD PTR [esp+OFFSET] \
+        __asm 			fadd DWORD PTR [esp+(OFFSET+DEBUG_OFFSET)] \
+        __asm 			fstp DWORD PTR [esp+(OFFSET+DEBUG_OFFSET)] \
     }
 
 /* Add integer to integer value. */
 #define IIADD(OFFSET, REG1, REG2, VALUE) \
     __asm{ \
-        __asm 			mov REG1, [esp+OFFSET] \
+        __asm 			mov REG1, [esp+(OFFSET+DEBUG_OFFSET)] \
         __asm 			mov REG2, [VALUE] \
         __asm 			add REG1, REG2 \
-        __asm 			mov [esp+OFFSET], REG1 \
+        __asm 			mov [esp+(OFFSET+DEBUG_OFFSET)], REG1 \
     }
 
 #define IIADD8(OFFSET, VALUE) \
     __asm{ \
         __asm 			push eax \
         __asm 			push ecx \
-        __asm 			mov eax, [esp+OFFSET] \
+        __asm 			mov eax, [esp+(OFFSET+DEBUG_OFFSET)] \
         __asm 			mov ecx, [VALUE] \
         __asm 			add eax, ecx \
-        __asm 			mov [esp+OFFSET], eax \
+        __asm 			mov [esp+(OFFSET+DEBUG_OFFSET)], eax \
         __asm 			pop ecx \
         __asm 			pop eax \
     }
@@ -193,21 +230,46 @@ class DiploWinSizes
  */
 #define IIF_SCALE_LEFT(OFFSET_X, OFFSET_W, SCALEFACTOR, REG1, REG2) \
     __asm{ \
-        __asm		mov REG1, [esp+OFFSET_W] \
+        __asm		mov REG1, [esp+(OFFSET_W+DEBUG_OFFSET)] \
         __asm		fld [SCALEFACTOR] \
-        __asm		fmul DWORD PTR [esp+OFFSET_W] \
-        __asm		fstp DWORD PTR [esp+OFFSET_W] \
-        __asm		mov REG2, [esp+OFFSET_W] \
+        __asm		fmul DWORD PTR [esp+(OFFSET_W+DEBUG_OFFSET)] \
+        __asm		fstp DWORD PTR [esp+(OFFSET_W+DEBUG_OFFSET)] \
+        __asm		mov REG2, [esp+(OFFSET_W+DEBUG_OFFSET)] \
         __asm		sub REG1, REG2 \
-        __asm		mov REG2, [esp+OFFSET_X] \
+        __asm		mov REG2, [esp+(OFFSET_X+DEBUG_OFFSET)] \
         __asm		sub REG2, REG1 \
-        __asm		mov [esp+OFFSET_X], REG2 \
+        __asm		mov [esp+(OFFSET_X+DEBUG_OFFSET)], REG2 \
     }
 
-#define COPY(OFFSET, REG, VALUE) \
+#define COPY_ON_STACK(OFFSET, REG, VALUE) \
     __asm{ \
         __asm mov REG, VALUE \
-        __asm mov [esp+OFFSET], REG \
+        __asm mov [esp+(OFFSET+DEBUG_OFFSET)], REG \
+    }
+
+#define COPY(TO, REG, FROM) \
+    __asm{ \
+        __asm mov REG, FROM \
+        __asm mov TO, REG \
     }
 
 #endif
+
+// Continue with original function
+/* In Debug-Builds, compiler adds following check at the end:
+   CvGameCoreDLL.Cv_DipLeftTop+53- 5E                    - pop esi
+   CvGameCoreDLL.Cv_DipLeftTop+54- 3B EC                 - cmp ebp,esp
+   CvGameCoreDLL.Cv_DipLeftTop+56- E8 11610000           - call CvGameCoreDLL._RTC_CheckEsp
+   CvGameCoreDLL.Cv_DipLeftTop+5B- 5D                    - pop ebp
+   CvGameCoreDLL.Cv_DipLeftTop+5C- C3                    - ret 
+
+   Note that this codes IS NEVER REACHED reached due 'jmp' in trampolin.
+   Thus we had to cleanup manualay before trampolin pointer is used.
+   */
+#define TRAMPOLINE(TARGET)\
+DEBUG_UNDO \
+/* Using assembler here to avoid 'call' instruction which would change the ESP register. */ \
+__asm{ \
+    jmp dword ptr [TARGET] \
+}
+
